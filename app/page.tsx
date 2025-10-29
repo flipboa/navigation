@@ -6,7 +6,8 @@ import { useToast } from "@/components/ui/use-toast"
 import { useRouter } from "next/navigation"
 import CategorySidebar from "@/components/category-sidebar"
 import ToolCard from "@/components/tool-card"
-import { categories, hotTools, newTools, toolsByCategory } from "@/lib/data"
+import { getActiveCategories, CategoryForUI } from "@/lib/services/categories"
+import { getHotTools, getNewTools, getAllToolsByCategories, ToolForUI } from "@/lib/services/tools"
 import { useAuth } from "@/components/auth-provider"
 
 export default function HomePage() {
@@ -14,8 +15,88 @@ export default function HomePage() {
   const { toast } = useToast()
   const { user } = useAuth()
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
+  const [categories, setCategories] = useState<CategoryForUI[]>([])
+  const [isLoadingCategories, setIsLoadingCategories] = useState(true)
+  const [hotToolsData, setHotToolsData] = useState<ToolForUI[]>([])
+  const [newToolsData, setNewToolsData] = useState<ToolForUI[]>([])
+  const [toolsByCategoryData, setToolsByCategoryData] = useState<{ [key: string]: ToolForUI[] }>({})
+  const [isLoadingTools, setIsLoadingTools] = useState(true)
   const categoryRefs = useRef<{ [key: string]: HTMLElement | null }>({})
   const contentRef = useRef<HTMLDivElement | null>(null)
+
+  // 加载分类数据
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        setIsLoadingCategories(true)
+        const categoriesData = await getActiveCategories()
+        setCategories(categoriesData)
+      } catch (error) {
+        console.error('Failed to load categories:', error)
+        toast({
+          title: "加载分类失败",
+          description: "无法加载分类数据，请刷新页面重试",
+          variant: "destructive"
+        })
+      } finally {
+        setIsLoadingCategories(false)
+      }
+    }
+
+    loadCategories()
+  }, [])
+
+  // 加载工具数据
+  useEffect(() => {
+    const loadTools = async () => {
+      try {
+        setIsLoadingTools(true)
+        
+        // 并行加载热门工具和新工具
+        const [hotToolsResult, newToolsResult] = await Promise.all([
+          getHotTools(),
+          getNewTools()
+        ])
+        
+        setHotToolsData(hotToolsResult)
+        setNewToolsData(newToolsResult)
+        
+      } catch (error) {
+        console.error('Failed to load tools:', error)
+        toast({
+          title: "加载工具失败",
+          description: "无法加载工具数据，请刷新页面重试",
+          variant: "destructive"
+        })
+      } finally {
+        setIsLoadingTools(false)
+      }
+    }
+
+    loadTools()
+  }, [])
+
+  // 当分类数据加载完成后，加载分类工具数据
+  useEffect(() => {
+    const loadCategoryTools = async () => {
+      if (categories.length === 0) return
+      
+      try {
+        const categoryIds = categories.map(cat => cat.id)
+        const toolsByCategoryResult = await getAllToolsByCategories(categoryIds)
+        setToolsByCategoryData(toolsByCategoryResult)
+      } catch (error) {
+        console.error('Failed to load category tools:', error)
+        toast({
+          title: "加载分类工具失败",
+          description: "无法加载分类工具数据，请刷新页面重试",
+          variant: "destructive"
+        })
+      }
+    }
+
+    loadCategoryTools()
+  }, [categories])
 
   const handleCategoryClick = (categoryId: string) => {
     setActiveCategory(categoryId)
@@ -101,9 +182,20 @@ export default function HomePage() {
             <h2 className="text-xl font-bold">热门工具</h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {hotTools.map((tool) => (
-              <ToolCard key={tool.id} tool={tool} />
-            ))}
+            {isLoadingTools ? (
+              // 加载状态骨架屏
+              Array.from({ length: 8 }).map((_, index) => (
+                <div key={index} className="bg-white dark:bg-gray-800 rounded-lg border p-4 animate-pulse">
+                  <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded mb-2"></div>
+                  <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded mb-2"></div>
+                  <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-2/3"></div>
+                </div>
+              ))
+            ) : (
+              hotToolsData.map((tool) => (
+                <ToolCard key={tool.id} tool={tool} />
+              ))
+            )}
           </div>
         </section>
 
@@ -113,9 +205,20 @@ export default function HomePage() {
             <h2 className="text-xl font-bold">最新收录</h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {newTools.map((tool) => (
-              <ToolCard key={tool.id} tool={tool} />
-            ))}
+            {isLoadingTools ? (
+              // 加载状态骨架屏
+              Array.from({ length: 8 }).map((_, index) => (
+                <div key={index} className="bg-white dark:bg-gray-800 rounded-lg border p-4 animate-pulse">
+                  <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded mb-2"></div>
+                  <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded mb-2"></div>
+                  <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-2/3"></div>
+                </div>
+              ))
+            ) : (
+              newToolsData.map((tool) => (
+                <ToolCard key={tool.id} tool={tool} />
+              ))
+            )}
           </div>
         </section>
 
@@ -139,7 +242,7 @@ export default function HomePage() {
               </h2>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {toolsByCategory[category.id]?.map((tool) => (
+              {toolsByCategoryData[category.id]?.map((tool) => (
                 <ToolCard key={tool.id} tool={tool} />
               ))}
             </div>

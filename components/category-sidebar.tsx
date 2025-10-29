@@ -4,15 +4,10 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
-
-interface Category {
-  id: string
-  name: string
-  icon: string
-}
+import { CategoryForUI } from "@/lib/services/categories"
 
 interface CategorySidebarProps {
-  categories: Category[]
+  categories: CategoryForUI[]
   activeCategory: string | null
   onCategoryClick: (categoryId: string) => void
   onSubmitClick: () => void
@@ -39,6 +34,11 @@ export default function CategorySidebar({
               >
                 <span className="mr-2">{category.icon}</span>
                 {category.name}
+                {category.tools_count !== undefined && category.tools_count > 0 && (
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {category.tools_count}
+                  </span>
+                )}
               </Button>
             ))}
           </div>

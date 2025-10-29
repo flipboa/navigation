@@ -1,20 +1,10 @@
 import Link from "next/link"
 import Image from "next/image"
 import { Card, CardContent } from "@/components/ui/card"
-
-interface Tool {
-  id: string
-  name: string
-  slug: string
-  description: string
-  logo: string
-  category: string
-  isHot?: boolean
-  isNew?: boolean
-}
+import { ToolForUI } from "@/lib/services/tools"
 
 interface ToolCardProps {
-  tool: Tool
+  tool: ToolForUI
 }
 
 export default function ToolCard({ tool }: ToolCardProps) {
