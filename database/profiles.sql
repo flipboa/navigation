@@ -39,11 +39,12 @@ DROP FUNCTION IF EXISTS update_updated_at_column();
 -- =====================================================
 
 -- 2.1 创建profiles表 (如果不存在)
--- 存储用户的基本信息，包括昵称、邮箱等
+-- 存储用户的基本信息，包括昵称、邮箱、角色等
 CREATE TABLE IF NOT EXISTS profiles (
   id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
   nickname VARCHAR(50) UNIQUE NOT NULL,
   email VARCHAR(255) NOT NULL,
+  role VARCHAR(20) DEFAULT 'user' CHECK (role IN ('user', 'admin', 'reviewer')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -51,6 +52,7 @@ CREATE TABLE IF NOT EXISTS profiles (
 -- 2.2 创建索引以提高查询性能
 CREATE INDEX IF NOT EXISTS idx_profiles_nickname ON profiles(nickname);
 CREATE INDEX IF NOT EXISTS idx_profiles_email ON profiles(email);
+CREATE INDEX IF NOT EXISTS idx_profiles_role ON profiles(role);
 
 -- =====================================================
 -- 第三步: 配置安全策略
@@ -130,12 +132,14 @@ CREATE TRIGGER update_profiles_updated_at
 CREATE OR REPLACE FUNCTION upsert_profile(
   user_email VARCHAR(255),    -- 参数1: 用户邮箱
   user_id UUID,              -- 参数2: 用户ID (来自auth.users)
-  user_nickname VARCHAR(50)   -- 参数3: 用户昵称
+  user_nickname VARCHAR(50),  -- 参数3: 用户昵称
+  user_role VARCHAR(20) DEFAULT 'user'  -- 参数4: 用户角色
 )
 RETURNS TABLE(
   profile_id UUID, 
   profile_nickname VARCHAR(50), 
   profile_email VARCHAR(255), 
+  profile_role VARCHAR(20),
   profile_created_at TIMESTAMPTZ, 
   profile_updated_at TIMESTAMPTZ
 ) AS $$
@@ -143,17 +147,19 @@ BEGIN
   -- 使用CTE和明确的列别名避免歧义
   RETURN QUERY
   WITH upsert_result AS (
-    INSERT INTO profiles (id, nickname, email)
-    VALUES (user_id, user_nickname, user_email)
+    INSERT INTO profiles (id, nickname, email, role)
+    VALUES (user_id, user_nickname, user_email, user_role)
     ON CONFLICT (id) 
     DO UPDATE SET 
       nickname = EXCLUDED.nickname,
       email = EXCLUDED.email,
+      role = EXCLUDED.role,
       updated_at = NOW()
     RETURNING 
       profiles.id, 
       profiles.nickname, 
       profiles.email, 
+      profiles.role,
       profiles.created_at, 
       profiles.updated_at
   )
@@ -161,6 +167,7 @@ BEGIN
     upsert_result.id as profile_id,
     upsert_result.nickname as profile_nickname,
     upsert_result.email as profile_email,
+    upsert_result.role as profile_role,
     upsert_result.created_at as profile_created_at,
     upsert_result.updated_at as profile_updated_at
   FROM upsert_result;
@@ -177,6 +184,7 @@ RETURNS TABLE(
   profile_id UUID,
   profile_nickname VARCHAR(50),
   profile_email VARCHAR(255),
+  profile_role VARCHAR(20),
   profile_created_at TIMESTAMPTZ,
   profile_updated_at TIMESTAMPTZ
 ) AS $$
@@ -186,6 +194,7 @@ BEGIN
     p.id as profile_id,
     p.nickname as profile_nickname,
     p.email as profile_email,
+    p.role as profile_role,
     p.created_at as profile_created_at,
     p.updated_at as profile_updated_at
   FROM profiles p
@@ -210,7 +219,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- =====================================================
 
 -- 8.1 授予认证用户执行函数的权限
-GRANT EXECUTE ON FUNCTION upsert_profile(VARCHAR(255), UUID, VARCHAR(50)) TO authenticated;
+GRANT EXECUTE ON FUNCTION upsert_profile(VARCHAR(255), UUID, VARCHAR(50), VARCHAR(20)) TO authenticated;
 GRANT EXECUTE ON FUNCTION get_user_profile(UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION is_nickname_available(VARCHAR(50), UUID) TO authenticated;
 
@@ -283,10 +292,11 @@ COMMENT ON TABLE profiles IS 'AI工具目录用户资料表，存储用户基本
 COMMENT ON COLUMN profiles.id IS '用户ID，关联auth.users表';
 COMMENT ON COLUMN profiles.nickname IS '用户昵称，全局唯一';
 COMMENT ON COLUMN profiles.email IS '用户邮箱地址';
+COMMENT ON COLUMN profiles.role IS '用户角色：user(普通用户), admin(管理员), reviewer(审核员)';
 COMMENT ON COLUMN profiles.created_at IS '创建时间';
 COMMENT ON COLUMN profiles.updated_at IS '最后更新时间';
 
-COMMENT ON FUNCTION upsert_profile(VARCHAR(255), UUID, VARCHAR(50)) IS '创建或更新用户资料信息';
+COMMENT ON FUNCTION upsert_profile(VARCHAR(255), UUID, VARCHAR(50), VARCHAR(20)) IS '创建或更新用户资料信息';
 COMMENT ON FUNCTION get_user_profile(UUID) IS '获取指定用户的资料信息';
 COMMENT ON FUNCTION is_nickname_available(VARCHAR(50), UUID) IS '检查昵称是否可用';
 COMMENT ON FUNCTION update_updated_at_column() IS '自动更新updated_at字段的触发器函数';
@@ -302,7 +312,8 @@ COMMENT ON FUNCTION update_updated_at_column() IS '自动更新updated_at字段�
 const { data, error } = await supabase.rpc('upsert_profile', {
   user_email: 'user@example.com',
   user_id: 'uuid-from-auth',
-  user_nickname: 'username'
+  user_nickname: 'username',
+  user_role: 'user' // 可选，默认为'user'，可选值：'user', 'admin', 'reviewer'
 });
 
 2. 获取用户资料:
@@ -327,9 +338,10 @@ const { data, error } = await supabase
 
 1. user_id必须是auth.users表中存在的有效UUID
 2. nickname必须唯一，违反约束会返回错误
-3. 函数返回的列名带有profile_前缀避免歧义
-4. RLS策略确保用户只能访问自己的数据
-5. 所有时间字段使用TIMESTAMPTZ类型支持时区
+3. role字段只能是'user', 'admin', 'reviewer'之一
+4. 函数返回的列名带有profile_前缀避免歧义
+5. RLS策略确保用户只能访问自己的数据
+6. 所有时间字段使用TIMESTAMPTZ类型支持时区
 
 === 常见问题解决 ===
 

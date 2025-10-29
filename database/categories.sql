@@ -16,9 +16,9 @@
 -- 第一步: 清理现有资源 (避免冲突)
 -- =====================================================
 
--- 删除可能存在的旧触发器和函数
-DROP TRIGGER IF EXISTS update_categories_updated_at ON categories;
-DROP FUNCTION IF EXISTS update_categories_updated_at_column();
+-- 删除可能存在的旧触发器和函数（使用CASCADE确保完全清理）
+DROP TRIGGER IF EXISTS update_categories_updated_at ON categories CASCADE;
+DROP FUNCTION IF EXISTS update_categories_updated_at_column() CASCADE;
 
 -- =====================================================
 -- 第二步: 创建分类表结构
@@ -172,22 +172,47 @@ ON CONFLICT (slug) DO NOTHING;
 -- 第七步: 创建视图和函数
 -- =====================================================
 
--- 创建分类统计视图
+-- 创建分类基础视图（不依赖tools表）
 CREATE OR REPLACE VIEW categories_with_stats AS
 SELECT 
   c.*,
-  COALESCE(t.tools_count, 0) as actual_tools_count
+  c.tools_count as actual_tools_count  -- 使用表中的冗余字段
 FROM categories c
-LEFT JOIN (
-  SELECT 
-    category_id,
-    COUNT(*) as tools_count
-  FROM tools 
-  WHERE status = 'published'
-  GROUP BY category_id
-) t ON c.id = t.category_id
 WHERE c.is_active = true
 ORDER BY c.sort_order;
+
+-- 创建更新分类工具数量的函数（当tools表存在时使用）
+CREATE OR REPLACE FUNCTION update_category_tools_count()
+RETURNS void AS $$
+BEGIN
+  -- 检查tools表是否存在
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tools' AND table_schema = 'public') THEN
+    -- 使用动态SQL来避免编译时的表依赖检查
+    EXECUTE '
+      UPDATE categories 
+      SET tools_count = COALESCE(tool_counts.count, 0)
+      FROM (
+        SELECT 
+          category_id,
+          COUNT(*) as count
+        FROM tools 
+        WHERE status = ''published''
+        GROUP BY category_id
+      ) tool_counts
+      WHERE categories.id = tool_counts.category_id';
+    
+    -- 将没有工具的分类数量设为0
+    EXECUTE '
+      UPDATE categories 
+      SET tools_count = 0 
+      WHERE id NOT IN (
+        SELECT DISTINCT category_id 
+        FROM tools 
+        WHERE status = ''published'' AND category_id IS NOT NULL
+      )';
+  END IF;
+END;
+$$ LANGUAGE plpgsql;
 
 -- 创建获取分类层级的函数
 CREATE OR REPLACE FUNCTION get_category_hierarchy(category_uuid UUID)
@@ -241,6 +266,10 @@ COMMENT ON COLUMN categories.parent_id IS '父分类ID，支持层级分类';
 COMMENT ON COLUMN categories.sort_order IS '排序权重，数字越小越靠前';
 COMMENT ON COLUMN categories.tools_count IS '分类下的工具数量（冗余字段）';
 
+COMMENT ON VIEW categories_with_stats IS '分类统计视图，显示启用的分类及其工具数量';
+COMMENT ON FUNCTION update_category_tools_count() IS '更新分类工具数量的函数（仅在tools表存在时执行）';
+COMMENT ON FUNCTION get_category_hierarchy(UUID) IS '获取分类层级结构的递归函数';
+
 -- 输出创建完成信息
 DO $$
 BEGIN
@@ -249,4 +278,5 @@ BEGIN
   RAISE NOTICE '功能: 存储AI工具分类信息';
   RAISE NOTICE '安全: 已启用RLS策略';
   RAISE NOTICE '数据: 已插入9个默认分类';
+  RAISE NOTICE '注意: update_category_tools_count()函数需要在tools表创建后调用';
 END $$;

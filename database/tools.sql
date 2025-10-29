@@ -17,11 +17,28 @@
 -- 第一步: 清理现有资源 (避免冲突)
 -- =====================================================
 
--- 删除可能存在的旧触发器和函数
-DROP TRIGGER IF EXISTS update_tools_updated_at ON tools;
-DROP TRIGGER IF EXISTS update_tools_slug ON tools;
-DROP FUNCTION IF EXISTS update_tools_updated_at_column();
-DROP FUNCTION IF EXISTS generate_tool_slug();
+-- 删除可能存在的旧触发器和函数（只有在表存在时才删除触发器）
+DO $$
+BEGIN
+    -- 删除触发器（只有在表存在时）
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tools' AND table_schema = 'public') THEN
+        DROP TRIGGER IF EXISTS update_tools_updated_at ON tools;
+        DROP TRIGGER IF EXISTS update_tools_slug ON tools;
+        
+        -- 删除RLS策略
+        DROP POLICY IF EXISTS "Anyone can view published tools" ON tools;
+        DROP POLICY IF EXISTS "Users can view own tools" ON tools;
+        DROP POLICY IF EXISTS "Admins can view all tools" ON tools;
+        DROP POLICY IF EXISTS "Authenticated users can submit tools" ON tools;
+        DROP POLICY IF EXISTS "Users can update own draft tools" ON tools;
+        DROP POLICY IF EXISTS "Admins can update all tools" ON tools;
+        DROP POLICY IF EXISTS "Admins can delete tools" ON tools;
+    END IF;
+    
+    -- 删除函数（可以独立删除）
+    DROP FUNCTION IF EXISTS update_tools_updated_at_column();
+    DROP FUNCTION IF EXISTS generate_tool_slug();
+END $$;
 
 -- =====================================================
 -- 第二步: 创建枚举类型
@@ -71,8 +88,8 @@ CREATE TABLE IF NOT EXISTS tools (
   -- 工具截图URLs（JSON数组）
   screenshots JSONB DEFAULT '[]',
   
-  -- 所属分类ID
-  category_id UUID NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
+  -- 所属分类ID（暂时不设置外键约束，待categories表创建后再添加）
+  category_id UUID NOT NULL,
   
   -- 工具标签（JSON数组）
   tags JSONB DEFAULT '[]',
@@ -172,7 +189,7 @@ CREATE INDEX IF NOT EXISTS idx_tools_screenshots_gin ON tools USING GIN (screens
 
 -- 创建全文搜索索引
 CREATE INDEX IF NOT EXISTS idx_tools_search ON tools USING GIN (
-  to_tsvector('chinese', name || ' ' || description || ' ' || COALESCE(content, ''))
+  to_tsvector('simple', name || ' ' || description || ' ' || COALESCE(content, ''))
 );
 
 -- =====================================================
@@ -190,10 +207,13 @@ CREATE POLICY "Anyone can view published tools" ON tools
 CREATE POLICY "Users can view own tools" ON tools
   FOR SELECT USING (submitted_by = auth.uid());
 
--- 策略3: 管理员可以查看所有工具
+-- 策略3: 管理员可以查看所有工具（需要profiles表存在）
 CREATE POLICY "Admins can view all tools" ON tools
   FOR SELECT USING (
     EXISTS (
+      SELECT 1 FROM information_schema.tables 
+      WHERE table_name = 'profiles' AND table_schema = 'public'
+    ) AND EXISTS (
       SELECT 1 FROM profiles 
       WHERE profiles.id = auth.uid() 
       AND profiles.role = 'admin'
@@ -214,20 +234,26 @@ CREATE POLICY "Users can update own draft tools" ON tools
     AND status IN ('draft', 'rejected')
   );
 
--- 策略6: 管理员可以更新所有工具
+-- 策略6: 管理员可以更新所有工具（需要profiles表存在）
 CREATE POLICY "Admins can update all tools" ON tools
   FOR UPDATE USING (
     EXISTS (
+      SELECT 1 FROM information_schema.tables 
+      WHERE table_name = 'profiles' AND table_schema = 'public'
+    ) AND EXISTS (
       SELECT 1 FROM profiles 
       WHERE profiles.id = auth.uid() 
       AND profiles.role = 'admin'
     )
   );
 
--- 策略7: 管理员可以删除工具
+-- 策略7: 管理员可以删除工具（需要profiles表存在）
 CREATE POLICY "Admins can delete tools" ON tools
   FOR DELETE USING (
     EXISTS (
+      SELECT 1 FROM information_schema.tables 
+      WHERE table_name = 'profiles' AND table_schema = 'public'
+    ) AND EXISTS (
       SELECT 1 FROM profiles 
       WHERE profiles.id = auth.uid() 
       AND profiles.role = 'admin'
@@ -301,24 +327,76 @@ CREATE TRIGGER update_tools_slug
 -- 第七步: 创建视图和函数
 -- =====================================================
 
--- 创建已发布工具的视图
+-- 创建已发布工具的视图（需要categories表存在时才包含分类信息）
 CREATE OR REPLACE VIEW published_tools AS
 SELECT 
   t.*,
-  c.name as category_name,
-  c.slug as category_slug,
-  c.icon as category_icon
+  CASE 
+    WHEN EXISTS (
+      SELECT 1 FROM information_schema.tables 
+      WHERE table_name = 'categories' AND table_schema = 'public'
+    ) THEN (
+      SELECT c.name FROM categories c WHERE c.id = t.category_id
+    )
+    ELSE NULL
+  END as category_name,
+  CASE 
+    WHEN EXISTS (
+      SELECT 1 FROM information_schema.tables 
+      WHERE table_name = 'categories' AND table_schema = 'public'
+    ) THEN (
+      SELECT c.slug FROM categories c WHERE c.id = t.category_id
+    )
+    ELSE NULL
+  END as category_slug,
+  CASE 
+    WHEN EXISTS (
+      SELECT 1 FROM information_schema.tables 
+      WHERE table_name = 'categories' AND table_schema = 'public'
+    ) THEN (
+      SELECT c.icon FROM categories c WHERE c.id = t.category_id
+    )
+    ELSE NULL
+  END as category_icon
 FROM tools t
-JOIN categories c ON t.category_id = c.id
 WHERE t.status = 'published'
 ORDER BY t.sort_order, t.published_at DESC;
 
--- 创建热门工具视图
+-- 创建热门工具视图（需要categories表存在时才包含分类信息）
 CREATE OR REPLACE VIEW hot_tools AS
-SELECT *
-FROM published_tools
-WHERE is_hot = true
-ORDER BY sort_order, view_count DESC, published_at DESC;
+SELECT 
+  t.*,
+  CASE 
+    WHEN EXISTS (
+      SELECT 1 FROM information_schema.tables 
+      WHERE table_name = 'categories' AND table_schema = 'public'
+    ) THEN (
+      SELECT c.name FROM categories c WHERE c.id = t.category_id
+    )
+    ELSE NULL
+  END as category_name,
+  CASE 
+    WHEN EXISTS (
+      SELECT 1 FROM information_schema.tables 
+      WHERE table_name = 'categories' AND table_schema = 'public'
+    ) THEN (
+      SELECT c.slug FROM categories c WHERE c.id = t.category_id
+    )
+    ELSE NULL
+  END as category_slug,
+  CASE 
+    WHEN EXISTS (
+      SELECT 1 FROM information_schema.tables 
+      WHERE table_name = 'categories' AND table_schema = 'public'
+    ) THEN (
+      SELECT c.icon FROM categories c WHERE c.id = t.category_id
+    )
+    ELSE NULL
+  END as category_icon
+FROM tools t
+WHERE t.status = 'published'
+  AND t.is_hot = true
+ORDER BY t.sort_order, t.view_count DESC, t.published_at DESC;
 
 -- 创建新工具视图
 CREATE OR REPLACE VIEW new_tools AS
@@ -365,8 +443,8 @@ BEGIN
     t.rating,
     t.view_count,
     ts_rank(
-      to_tsvector('chinese', t.name || ' ' || t.description || ' ' || COALESCE(t.content, '')),
-      plainto_tsquery('chinese', search_query)
+      to_tsvector('simple', t.name || ' ' || t.description || ' ' || COALESCE(t.content, '')),
+      plainto_tsquery('simple', search_query)
     ) as rank
   FROM tools t
   JOIN categories c ON t.category_id = c.id
@@ -376,8 +454,8 @@ BEGIN
     AND (
       search_query IS NULL 
       OR search_query = '' 
-      OR to_tsvector('chinese', t.name || ' ' || t.description || ' ' || COALESCE(t.content, '')) 
-         @@ plainto_tsquery('chinese', search_query)
+      OR to_tsvector('simple', t.name || ' ' || t.description || ' ' || COALESCE(t.content, '')) 
+         @@ plainto_tsquery('simple', search_query)
     )
   ORDER BY 
     CASE WHEN search_query IS NOT NULL AND search_query != '' THEN rank END DESC,
@@ -466,4 +544,9 @@ BEGIN
   RAISE NOTICE '数据: 已插入3个示例工具';
   RAISE NOTICE '视图: published_tools, hot_tools, new_tools, featured_tools';
   RAISE NOTICE '函数: search_tools, increment_tool_view_count, increment_tool_click_count';
+  RAISE NOTICE '';
+  RAISE NOTICE '注意事项:';
+  RAISE NOTICE '1. category_id字段暂未设置外键约束，需要在categories表创建后手动添加';
+  RAISE NOTICE '2. 部分RLS策略依赖profiles表，需要在profiles表创建后才能正常工作';
+  RAISE NOTICE '3. 视图中的分类信息在categories表不存在时将显示为NULL';
 END $$;

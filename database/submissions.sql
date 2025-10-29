@@ -18,10 +18,22 @@
 -- =====================================================
 
 -- 删除可能存在的旧触发器和函数
-DROP TRIGGER IF EXISTS update_submissions_updated_at ON submissions;
-DROP TRIGGER IF EXISTS handle_submission_approval ON submissions;
+DO $$ 
+BEGIN
+  -- 只有当submissions表存在时才删除触发器
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'submissions') THEN
+    DROP TRIGGER IF EXISTS update_submissions_updated_at ON submissions;
+    DROP TRIGGER IF EXISTS handle_submission_approval ON submissions;
+    DROP TRIGGER IF EXISTS create_submission_review_history ON submissions;
+  END IF;
+END $$;
+
+-- 删除函数（函数可以独立删除）
 DROP FUNCTION IF EXISTS update_submissions_updated_at_column();
 DROP FUNCTION IF EXISTS handle_approved_submission();
+DROP FUNCTION IF EXISTS create_review_history();
+DROP FUNCTION IF EXISTS submit_tool(VARCHAR, TEXT, VARCHAR, UUID, TEXT, VARCHAR, JSONB, JSONB, tool_type, JSONB, VARCHAR, VARCHAR, TEXT);
+DROP FUNCTION IF EXISTS review_submission(UUID, review_action, TEXT);
 
 -- =====================================================
 -- 第二步: 创建枚举类型
@@ -241,6 +253,8 @@ CREATE POLICY "Users can view own submissions" ON submissions
 CREATE POLICY "Admins can view all submissions" ON submissions
   FOR SELECT USING (
     EXISTS (
+      SELECT 1 FROM information_schema.tables WHERE table_name = 'profiles'
+    ) AND EXISTS (
       SELECT 1 FROM profiles 
       WHERE profiles.id = auth.uid() 
       AND profiles.role = 'admin'
@@ -252,6 +266,8 @@ CREATE POLICY "Reviewers can view pending submissions" ON submissions
   FOR SELECT USING (
     status IN ('submitted', 'reviewing') 
     AND EXISTS (
+      SELECT 1 FROM information_schema.tables WHERE table_name = 'profiles'
+    ) AND EXISTS (
       SELECT 1 FROM profiles 
       WHERE profiles.id = auth.uid() 
       AND profiles.role IN ('admin', 'reviewer')
@@ -276,6 +292,8 @@ CREATE POLICY "Users can update own draft submissions" ON submissions
 CREATE POLICY "Admins and reviewers can update submissions" ON submissions
   FOR UPDATE USING (
     EXISTS (
+      SELECT 1 FROM information_schema.tables WHERE table_name = 'profiles'
+    ) AND EXISTS (
       SELECT 1 FROM profiles 
       WHERE profiles.id = auth.uid() 
       AND profiles.role IN ('admin', 'reviewer')
@@ -293,6 +311,8 @@ CREATE POLICY "Users can delete own draft submissions" ON submissions
 CREATE POLICY "Admins can delete any submission" ON submissions
   FOR DELETE USING (
     EXISTS (
+      SELECT 1 FROM information_schema.tables WHERE table_name = 'profiles'
+    ) AND EXISTS (
       SELECT 1 FROM profiles 
       WHERE profiles.id = auth.uid() 
       AND profiles.role = 'admin'
@@ -315,6 +335,8 @@ CREATE POLICY "Users can view own submission reviews" ON submission_reviews
 CREATE POLICY "Admins and reviewers can view all reviews" ON submission_reviews
   FOR SELECT USING (
     EXISTS (
+      SELECT 1 FROM information_schema.tables WHERE table_name = 'profiles'
+    ) AND EXISTS (
       SELECT 1 FROM profiles 
       WHERE profiles.id = auth.uid() 
       AND profiles.role IN ('admin', 'reviewer')
@@ -325,6 +347,8 @@ CREATE POLICY "Admins and reviewers can view all reviews" ON submission_reviews
 CREATE POLICY "Admins and reviewers can create reviews" ON submission_reviews
   FOR INSERT WITH CHECK (
     EXISTS (
+      SELECT 1 FROM information_schema.tables WHERE table_name = 'profiles'
+    ) AND EXISTS (
       SELECT 1 FROM profiles 
       WHERE profiles.id = auth.uid() 
       AND profiles.role IN ('admin', 'reviewer')
@@ -480,7 +504,7 @@ SELECT
   s.*,
   c.name as category_name,
   c.slug as category_slug,
-  p.username as submitter_username,
+  p.nickname as submitter_username,
   p.email as submitter_email_profile
 FROM submissions s
 JOIN categories c ON s.category_id = c.id
@@ -505,15 +529,15 @@ SELECT
   s.*,
   c.name as category_name,
   c.slug as category_slug,
-  p.username as submitter_username,
-  r.username as reviewer_username,
+  p.nickname as submitter_username,
+  r.nickname as reviewer_username,
   COALESCE(
     json_agg(
       json_build_object(
         'action', sr.action,
         'notes', sr.notes,
         'created_at', sr.created_at,
-        'reviewer_name', rp.username
+        'reviewer_name', rp.nickname
       ) ORDER BY sr.created_at DESC
     ) FILTER (WHERE sr.id IS NOT NULL), 
     '[]'::json
@@ -525,7 +549,7 @@ LEFT JOIN profiles r ON s.reviewed_by = r.id
 LEFT JOIN submission_reviews sr ON s.id = sr.submission_id
 LEFT JOIN profiles rp ON sr.reviewer_id = rp.id
 WHERE s.is_latest_version = true
-GROUP BY s.id, c.name, c.slug, p.username, r.username;
+GROUP BY s.id, c.name, c.slug, p.nickname, r.nickname;
 
 -- 创建提交工具的函数
 CREATE OR REPLACE FUNCTION submit_tool(
@@ -600,6 +624,8 @@ DECLARE
 BEGIN
   -- 检查权限
   IF NOT EXISTS (
+    SELECT 1 FROM information_schema.tables WHERE table_name = 'profiles'
+  ) OR NOT EXISTS (
     SELECT 1 FROM profiles 
     WHERE id = auth.uid() 
     AND role IN ('admin', 'reviewer')
