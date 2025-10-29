@@ -16,8 +16,8 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files
-.env*
+# env files不上传本地配置文件
+.env.local
 
 # vercel
 .vercel
