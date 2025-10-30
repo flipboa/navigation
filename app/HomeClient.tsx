@@ -80,7 +80,7 @@ export default function HomeClient({
   }
 
   return (
-    <div className="flex">
+    <div className="flex min-h-screen">
       {/* 左侧分类栏 */}
       <CategorySidebar
         categories={categories}
@@ -89,8 +89,8 @@ export default function HomeClient({
         onSubmitClick={handleSubmitClick}
       />
 
-      {/* 主内容区 */}
-      <div className="flex-1 p-6 overflow-auto" ref={contentRef}>
+      {/* 主内容区 - 为固定的侧边栏留出空间 */}
+      <div className="flex-1 p-6 md:ml-64" ref={contentRef}>
         {/* 移动端搜索框 */}
         <div className="relative mb-6 md:hidden">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />

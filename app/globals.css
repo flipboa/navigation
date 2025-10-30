@@ -2,9 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  font-family: Arial, Helvetica, sans-serif;
+html {
+  overflow-y: scroll;
+  scroll-behavior: smooth;
 }
+
+/* 自定义滚动条样式 */
 
 @layer utilities {
   .text-balance {
@@ -112,5 +115,23 @@ div[style*="position: fixed"][style*="bottom"][style*="left"][style*="z-index"][
   }
   body {
     @apply bg-background text-foreground;
+    overflow-x: hidden;
+  }
+  
+  /* 防止下拉菜单导致的水平滚动条变化 */
+  html {
+    overflow-y: scroll;
+  }
+  
+  /* Header稳定性样式 */
+  .header-stable {
+    width: 100vw;
+    min-width: 100vw;
+    max-width: 100vw;
+  }
+  
+  .header-container {
+    width: 100%;
+    min-width: 0;
   }
 }

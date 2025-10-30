@@ -50,8 +50,8 @@ export default function Header() {
   }
 
   return (
-    <header className="border-b fixed top-0 left-0 right-0 bg-background z-50">
-      <div className="container mx-auto flex h-16 items-center justify-between px-4">
+    <header className="border-b fixed top-0 left-0 right-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-50 header-stable">
+      <div className="container mx-auto flex h-16 items-center justify-between px-4 max-w-full header-container">
         <div className="flex items-center gap-6">
           <Link href="/" className="flex items-center gap-2">
             <div className="text-purple-600">
@@ -88,6 +88,12 @@ export default function Header() {
                   <Link href="/admin">后台管理</Link>
                 </Button>
               )}
+              {/* 用户昵称显示 */}
+              {!profileLoading && (
+                <span className="text-sm text-muted-foreground">
+                  {getUserDisplayName()}
+                </span>
+              )}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="relative h-8 w-8 rounded-full">
@@ -98,26 +104,11 @@ export default function Header() {
                     </Avatar>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-56" align="end" forceMount>
-                  <div className="flex items-center justify-start gap-2 p-2">
-                    <div className="flex flex-col space-y-1 leading-none">
-                      {profileLoading ? (
-                        <p className="text-sm text-muted-foreground">加载中...</p>
-                      ) : (
-                        <>
-                          <p className="font-medium text-sm">{getUserDisplayName()}</p>
-                          {profile?.email && (
-                            <p className="text-xs text-muted-foreground">{profile.email}</p>
-                          )}
-                          {profile?.role && profile.role !== 'user' && (
-                            <p className="text-xs text-blue-600 font-medium">
-                              {profile.role === 'admin' ? '管理员' : '审核员'}
-                            </p>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
+                <DropdownMenuContent 
+                  className="w-56" 
+                  align="end" 
+                  forceMount 
+                >
                   <DropdownMenuItem asChild>
                     <Link href="/user/profile">个人信息</Link>
                   </DropdownMenuItem>

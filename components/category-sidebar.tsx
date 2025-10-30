@@ -20,7 +20,7 @@ export default function CategorySidebar({
   onSubmitClick,
 }: CategorySidebarProps) {
   return (
-    <div className="hidden md:block w-64 border-r bg-background h-[calc(100vh-4rem)] sticky top-16">
+    <div className="hidden md:block w-64 border-r bg-background h-[calc(100vh-4rem)] fixed top-16 left-0 z-10">
       <ScrollArea className="h-full py-4">
         <div className="px-3 py-2">
           <h2 className="mb-2 px-4 text-lg font-semibold">分类</h2>
