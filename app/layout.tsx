@@ -5,7 +5,7 @@ import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { AuthProvider } from "@/components/auth-provider"
 import { Toaster } from "@/components/ui/toaster"
-import Header from "@/components/header"
+import ConditionalHeader from "@/components/conditional-header"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -26,8 +26,8 @@ export default function RootLayout({
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
           <AuthProvider>
             <div className="min-h-screen flex flex-col">
-              <Header />
-              <main className="flex-1 pt-16">{children}</main>
+              <ConditionalHeader />
+              <main className="flex-1">{children}</main>
             </div>
             <Toaster />
           </AuthProvider>

@@ -74,7 +74,13 @@ export default function Header() {
           </Link>
         </div>
         <div className="flex items-center gap-4">
-          {user ? (
+          {loading ? (
+            // 认证状态加载中，显示加载状态
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-16 bg-muted animate-pulse rounded"></div>
+              <div className="h-8 w-16 bg-muted animate-pulse rounded"></div>
+            </div>
+          ) : user ? (
             <div className="flex items-center gap-2">
               {/* 后台管理入口 - 仅管理员可见 */}
               {profile?.role === 'admin' && (
@@ -127,12 +133,10 @@ export default function Header() {
               </DropdownMenu>
             </div>
           ) : (
+            // 用户未登录，显示登录按钮
             <div className="flex items-center gap-2">
               <Button variant="outline" asChild>
                 <Link href="/login">登录</Link>
-              </Button>
-              <Button asChild>
-                <Link href="/signup">注册</Link>
               </Button>
             </div>
           )}
