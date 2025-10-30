@@ -47,9 +47,7 @@ const formSchema = z.object({
   logo: z.string().min(1, {
     message: "请上传Logo",
   }),
-  coverImage: z.string().min(1, {
-    message: "请上传预览图",
-  }),
+  
 })
 
 export default function SubmitPage() {
@@ -93,7 +91,7 @@ export default function SubmitPage() {
         content:
           "这是一款强大的AI写作工具，可以帮助用户快速生成各种类型的文章，包括博客、社交媒体内容、产品描述等。\n\n## 主要功能\n\n- 智能文章生成\n- 多种文体风格\n- 语法检查和优化\n- 多语言支持",
         logo: "/digital-pen-logo.png",
-        coverImage: "/ai-writing-tool-dashboard.png",
+
       }
     : {
         name: "",
@@ -103,7 +101,7 @@ export default function SubmitPage() {
         description: "",
         content: "",
         logo: "",
-        coverImage: "",
+
       }
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -129,7 +127,7 @@ export default function SubmitPage() {
         tool_website_url: values.url,
         category_id: selectedCategory.id, // 使用数据库中的UUID id
         tool_logo_url: values.logo,
-        tool_screenshots: values.coverImage ? [values.coverImage] : [],
+        tool_screenshots: [],
         tool_tags: [], // 可以后续添加标签功能
         tool_type: 'free', // 默认免费，可以后续添加定价选择
         pricing_info: {},
@@ -300,27 +298,7 @@ export default function SubmitPage() {
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="coverImage"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>网站预览图</FormLabel>
-                  <FormControl>
-                    <FileUploader
-                      value={field.value}
-                      onChange={field.onChange}
-                      accept="image/*"
-                      maxSize={2 * 1024 * 1024} // 2MB
-                      previewHeight={200}
-                      previewWidth={400}
-                    />
-                  </FormControl>
-                  <FormDescription>上传工具的预览图，建议尺寸为1200x630像素，格式为PNG或JPG</FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+
 
             <Button type="submit" disabled={isSubmitting}>
               {isSubmitting ? "提交中..." : editId ? "更新工具" : "提交工具"}

@@ -11,7 +11,7 @@ export interface SubmissionData {
   category_id: string
   tool_content?: string
   tool_logo_url?: string
-  tool_screenshots?: string[]
+
   tool_tags?: string[]
   tool_type?: 'free' | 'freemium' | 'paid'
   pricing_info?: Record<string, any>
@@ -114,7 +114,7 @@ export class SubmissionService {
           tool_content: data.tool_content,
           tool_website_url: data.tool_website_url,
           tool_logo_url: data.tool_logo_url,
-          tool_screenshots: data.tool_screenshots || [],
+
           category_id: data.category_id,
           tool_tags: data.tool_tags || [],
           tool_type: data.tool_type || 'free',
