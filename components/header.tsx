@@ -3,7 +3,6 @@
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Search } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
@@ -50,17 +49,6 @@ export default function Header() {
     return '用户'
   }
 
-  // 获取头像显示字符
-  const getAvatarFallback = () => {
-    if (profile?.nickname) {
-      return profile.nickname.charAt(0).toUpperCase()
-    }
-    if (user?.email) {
-      return user.email.charAt(0).toUpperCase()
-    }
-    return '用'
-  }
-
   return (
     <header className="border-b fixed top-0 left-0 right-0 bg-background z-50">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
@@ -86,58 +74,58 @@ export default function Header() {
           </Link>
         </div>
         <div className="flex items-center gap-4">
-          <div className="relative hidden md:block">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <input
-              type="search"
-              placeholder="搜索AI工具..."
-              className="rounded-md border border-input bg-background pl-8 pr-4 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-          </div>
           {user ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback>
-                      {getAvatarFallback()}
-                    </AvatarFallback>
-                  </Avatar>
+            <div className="flex items-center gap-2">
+              {/* 后台管理入口 - 仅管理员可见 */}
+              {profile?.role === 'admin' && (
+                <Button variant="outline" size="sm" asChild>
+                  <Link href="/admin">后台管理</Link>
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-56" align="end" forceMount>
-                <div className="flex items-center justify-start gap-2 p-2">
-                  <div className="flex flex-col space-y-1 leading-none">
-                    {profileLoading ? (
-                      <p className="text-sm text-muted-foreground">加载中...</p>
-                    ) : (
-                      <>
-                        <p className="font-medium text-sm">{getUserDisplayName()}</p>
-                        {profile?.email && (
-                          <p className="text-xs text-muted-foreground">{profile.email}</p>
-                        )}
-                        {profile?.role && profile.role !== 'user' && (
-                          <p className="text-xs text-blue-600 font-medium">
-                            {profile.role === 'admin' ? '管理员' : '审核员'}
-                          </p>
-                        )}
-                      </>
-                    )}
+              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                    <Avatar className="h-8 w-8">
+                      <AvatarFallback>
+                        U
+                      </AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56" align="end" forceMount>
+                  <div className="flex items-center justify-start gap-2 p-2">
+                    <div className="flex flex-col space-y-1 leading-none">
+                      {profileLoading ? (
+                        <p className="text-sm text-muted-foreground">加载中...</p>
+                      ) : (
+                        <>
+                          <p className="font-medium text-sm">{getUserDisplayName()}</p>
+                          {profile?.email && (
+                            <p className="text-xs text-muted-foreground">{profile.email}</p>
+                          )}
+                          {profile?.role && profile.role !== 'user' && (
+                            <p className="text-xs text-blue-600 font-medium">
+                              {profile.role === 'admin' ? '管理员' : '审核员'}
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
-                <DropdownMenuItem asChild>
-                  <Link href="/user/profile">个人信息</Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/user/submissions">提交历史</Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/user/submit">提交工具</Link>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout}>退出登录</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  <DropdownMenuItem asChild>
+                    <Link href="/user/profile">个人信息</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/user/submissions">提交历史</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/user/submit">提交工具</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleLogout}>退出登录</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           ) : (
             <div className="flex items-center gap-2">
               <Button variant="outline" asChild>

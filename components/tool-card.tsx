@@ -14,9 +14,17 @@ export default function ToolCard({ tool }: ToolCardProps) {
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
             <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md">
-              <Image src={tool.logo || "/placeholder.svg"} alt={tool.name} fill className="object-cover" />
+              <Image
+                src={tool.logo || "/placeholder.svg"}
+                alt={tool.name}
+                fill
+                sizes="48px"
+                className="object-cover"
+                loading="lazy"
+                quality={75}
+              />
             </div>
-            <div>
+            <div className="min-w-0 flex-1">
               <h3 className="font-medium line-clamp-1">{tool.name}</h3>
               <p className="text-sm text-muted-foreground line-clamp-1 mt-1">{tool.description}</p>
             </div>

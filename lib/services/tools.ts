@@ -1,5 +1,7 @@
 import { createClient } from '@/lib/supabase/client'
+import { createClient as createServerClient } from '@/lib/supabase/server'
 import { hotTools, newTools, toolsByCategory } from '@/lib/data'
+import { CategoryForUI } from '@/lib/services/categories'
 
 // 工具接口定义（基于数据库schema）
 export interface Tool {
@@ -267,28 +269,71 @@ export async function getToolsByCategory(categorySlug: string): Promise<ToolForU
 
 /**
  * 获取所有分类的工具（用于主页面）
+ * 优化版本：使用单次查询获取所有工具，避免 N+1 查询问题
  */
 export async function getAllToolsByCategories(categoryIds: string[]): Promise<{ [key: string]: ToolForUI[] }> {
   try {
+    const supabase = createClient()
+
+    // 一次性查询所有分类的工具
+    const { data, error } = await supabase
+      .from('tools')
+      .select(`
+        id,
+        name,
+        slug,
+        description,
+        logo_url,
+        category_id,
+        is_hot,
+        is_new,
+        rating,
+        view_count,
+        website_url,
+        sort_order
+      `)
+      .eq('status', 'published')
+      .in('category_id', categoryIds)
+      .order('sort_order', { ascending: true })
+      .order('rating', { ascending: false })
+      .order('view_count', { ascending: false })
+
+    if (error) {
+      console.error('Error fetching all tools by categories:', error)
+      return toolsByCategory
+    }
+
+    // 在内存中按分类分组
     const result: { [key: string]: ToolForUI[] } = {}
-    
-    // 并行获取所有分类的工具
-    const promises = categoryIds.map(async (categoryId) => {
-      const tools = await getToolsByCategory(categoryId)
-      return { categoryId, tools }
+
+    // 初始化所有分类为空数组
+    categoryIds.forEach(categoryId => {
+      result[categoryId] = []
     })
-    
-    const results = await Promise.all(promises)
-    
-    // 组织结果
-    results.forEach(({ categoryId, tools }) => {
-      result[categoryId] = tools
+
+    // 将工具分配到对应的分类
+    data.forEach(tool => {
+      if (!result[tool.category_id]) {
+        result[tool.category_id] = []
+      }
+      result[tool.category_id].push({
+        id: tool.id,
+        name: tool.name,
+        slug: tool.slug,
+        description: tool.description,
+        logo: tool.logo_url || '/placeholder.svg',
+        category: tool.category_id,
+        isHot: tool.is_hot,
+        isNew: tool.is_new,
+        rating: tool.rating,
+        view_count: tool.view_count,
+        website_url: tool.website_url
+      })
     })
-    
+
     return result
   } catch (error) {
     console.error('Error in getAllToolsByCategories:', error)
-    // 出错时返回静态数据
     return toolsByCategory
   }
 }
@@ -357,7 +402,7 @@ export async function incrementToolViewCount(toolId: string): Promise<void> {
 export async function incrementToolClickCount(toolId: string): Promise<void> {
   try {
     const supabase = createClient()
-    
+
     const { error } = await supabase.rpc('increment_tool_click_count', {
       tool_id: toolId
     })
@@ -368,4 +413,152 @@ export async function incrementToolClickCount(toolId: string): Promise<void> {
   } catch (error) {
     console.error('Error in incrementToolClickCount:', error)
   }
+}
+
+// ============================================
+// 服务器端数据获取函数（用于 Server Components）
+// ============================================
+
+/**
+ * 服务器端：并行获取主页所有数据
+ * 这个函数用于服务器组件，一次性获取所有需要的数据
+ * 使用 Next.js 缓存策略优化性能
+ */
+const getHomePageDataInternal = async (supabase: any) => {
+  try {
+
+    // 并行执行所有查询
+    const [categoriesResult, hotToolsResult, newToolsResult, allToolsResult] = await Promise.all([
+      // 获取分类
+      supabase
+        .from('categories')
+        .select('id, slug, name, icon, sort_order, tools_count')
+        .eq('is_active', true)
+        .eq('show_on_homepage', true)
+        .order('sort_order', { ascending: true }),
+
+      // 获取热门工具
+      supabase
+        .from('tools')
+        .select(`
+          id, name, slug, description, logo_url, category_id,
+          is_hot, is_new, rating, view_count, website_url
+        `)
+        .eq('status', 'published')
+        .eq('is_hot', true)
+        .order('sort_order', { ascending: true })
+        .order('view_count', { ascending: false })
+        .limit(8),
+
+      // 获取新工具
+      supabase
+        .from('tools')
+        .select(`
+          id, name, slug, description, logo_url, category_id,
+          is_hot, is_new, rating, view_count, website_url
+        `)
+        .eq('status', 'published')
+        .eq('is_new', true)
+        .order('published_at', { ascending: false })
+        .limit(8),
+
+      // 获取所有已发布的工具
+      supabase
+        .from('tools')
+        .select(`
+          id, name, slug, description, logo_url, category_id,
+          is_hot, is_new, rating, view_count, website_url, sort_order
+        `)
+        .eq('status', 'published')
+        .order('sort_order', { ascending: true })
+        .order('rating', { ascending: false })
+        .order('view_count', { ascending: false })
+    ])
+
+    // 处理分类数据
+    const categories = categoriesResult.data?.map((cat: any) => ({
+      id: cat.slug,
+      slug: cat.slug,
+      name: cat.name,
+      icon: cat.icon || '📁',
+      tools_count: cat.tools_count || 0
+    })) || []
+
+    // 处理热门工具
+    const hotTools = hotToolsResult.data?.map((tool: any) => ({
+      id: tool.id,
+      name: tool.name,
+      slug: tool.slug,
+      description: tool.description,
+      logo: tool.logo_url || '/placeholder.svg',
+      category: tool.category_id,
+      isHot: tool.is_hot,
+      isNew: tool.is_new,
+      rating: tool.rating,
+      view_count: tool.view_count,
+      website_url: tool.website_url
+    })) || []
+
+    // 处理新工具
+    const newTools = newToolsResult.data?.map((tool: any) => ({
+      id: tool.id,
+      name: tool.name,
+      slug: tool.slug,
+      description: tool.description,
+      logo: tool.logo_url || '/placeholder.svg',
+      category: tool.category_id,
+      isHot: tool.is_hot,
+      isNew: tool.is_new,
+      rating: tool.rating,
+      view_count: tool.view_count,
+      website_url: tool.website_url
+    })) || []
+
+    // 按分类组织工具
+    const toolsByCategory: { [key: string]: ToolForUI[] } = {}
+    categories.forEach((cat: CategoryForUI) => {
+      toolsByCategory[cat.id] = []
+    })
+
+    allToolsResult.data?.forEach((tool: any) => {
+      const categorySlug = categories.find((cat: CategoryForUI) => cat.slug === tool.category_id)?.slug
+      if (categorySlug && toolsByCategory[categorySlug]) {
+        toolsByCategory[categorySlug].push({
+          id: tool.id,
+          name: tool.name,
+          slug: tool.slug,
+          description: tool.description,
+          logo: tool.logo_url || '/placeholder.svg',
+          category: tool.category_id,
+          isHot: tool.is_hot,
+          isNew: tool.is_new,
+          rating: tool.rating,
+          view_count: tool.view_count,
+          website_url: tool.website_url
+        })
+      }
+    })
+
+    return {
+      categories,
+      hotTools,
+      newTools,
+      toolsByCategory
+    }
+  } catch (error) {
+    console.error('Error fetching homepage data:', error)
+    // 返回空数据或回退数据
+    return {
+      categories: [],
+      hotTools: [],
+      newTools: [],
+      toolsByCategory: {}
+    }
+  }
+}
+
+// 导出主页数据获取函数（不使用缓存以避免cookies问题）
+export const getHomePageData = async () => {
+  const supabase = await createServerClient()
+  return getHomePageDataInternal(supabase)
 }
