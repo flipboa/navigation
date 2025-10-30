@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
-import { getActiveCategories, CategoryForUI } from "@/lib/services/categories"
+import { getAllCategories, CategoryForUI } from "@/lib/services/categories"
 import { FileUploader } from "@/components/file-uploader"
 import { submissionService } from "@/lib/services/submission"
 
@@ -44,10 +44,7 @@ const formSchema = z.object({
   content: z.string().min(50, {
     message: "详细介绍至少需要50个字符",
   }),
-  logo: z.string().min(1, {
-    message: "请上传Logo",
-  }),
-  
+  logo: z.string().optional(),
 })
 
 export default function SubmitPage() {
@@ -63,7 +60,7 @@ export default function SubmitPage() {
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const categoriesData = await getActiveCategories()
+        const categoriesData = await getAllCategories()
         setCategories(categoriesData)
       } catch (error) {
         console.error('Failed to fetch categories:', error)
@@ -91,7 +88,6 @@ export default function SubmitPage() {
         content:
           "这是一款强大的AI写作工具，可以帮助用户快速生成各种类型的文章，包括博客、社交媒体内容、产品描述等。\n\n## 主要功能\n\n- 智能文章生成\n- 多种文体风格\n- 语法检查和优化\n- 多语言支持",
         logo: "/digital-pen-logo.png",
-
       }
     : {
         name: "",
@@ -101,13 +97,21 @@ export default function SubmitPage() {
         description: "",
         content: "",
         logo: "",
-
       }
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues,
   })
+
+  const onInvalid = (errors: any) => {
+    console.error('表单验证失败:', errors)
+    toast({
+      title: "表单填写有误",
+      description: "请检查所有字段并修正错误后重试。",
+      variant: "destructive",
+    })
+  }
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true)
@@ -127,7 +131,6 @@ export default function SubmitPage() {
         tool_website_url: values.url,
         category_id: selectedCategory.id, // 使用数据库中的UUID id
         tool_logo_url: values.logo,
-        tool_screenshots: [],
         tool_tags: [], // 可以后续添加标签功能
         tool_type: 'free', // 默认免费，可以后续添加定价选择
         pricing_info: {},
@@ -142,14 +145,15 @@ export default function SubmitPage() {
         variant: result.auto_approved ? "default" : "default",
       })
 
-      // 根据结果决定跳转页面
-      if (result.auto_approved) {
-        // 自动通过的跳转到首页查看
-        router.push("/")
-      } else {
-        // 需要审核的跳转到提交历史页面
-        router.push("/user/submissions")
-      }
+      // 延迟跳转，让用户看到提示
+      setTimeout(() => {
+        if (result.auto_approved) {
+          router.push("/")
+        } else {
+          router.push("/user/submissions")
+        }
+      }, 1500) // 延迟1.5秒
+
     } catch (error) {
       console.error('提交失败:', error)
       toast({
@@ -166,7 +170,7 @@ export default function SubmitPage() {
     <div>
       <div className="max-w-3xl">
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+          <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="space-y-8">
             <FormField
               control={form.control}
               name="name"
@@ -224,12 +228,12 @@ export default function SubmitPage() {
                         <SelectValue placeholder="选择分类" />
                       </SelectTrigger>
                     </FormControl>
-                        <SelectContent>
+                    <SelectContent>
                       {isLoadingCategories ? (
                         <div className="p-2 text-center text-sm text-muted-foreground">加载中...</div>
                       ) : (
                         categories.map((category) => (
-                          <SelectItem key={category.id} value={category.id}>
+                          <SelectItem key={category.id} value={category.slug}>
                             {category.icon} {category.name}
                           </SelectItem>
                         ))
@@ -251,7 +255,7 @@ export default function SubmitPage() {
                   <FormControl>
                     <Textarea placeholder="简短描述该工具的主要功能和用途" className="resize-none" {...field} />
                   </FormControl>
-                  <FormDescription>简短描述该工具的主要功能和用途，不超过200个字符</FormDescription>
+                  <FormDescription>简短描述该工具的主要功能和用途，至少10个字符，不超过200个字符</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -270,7 +274,7 @@ export default function SubmitPage() {
                       {...field}
                     />
                   </FormControl>
-                  <FormDescription>支持Markdown格式，详细介绍该工具的功能、特点、使用方法等</FormDescription>
+                  <FormDescription>支持Markdown格式，详细介绍该工具的功能、特点、使用方法等，至少50个字符</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

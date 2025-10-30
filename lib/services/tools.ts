@@ -429,7 +429,7 @@ const getHomePageDataInternal = async (supabase: any) => {
 
     // 并行执行所有查询
     const [categoriesResult, hotToolsResult, newToolsResult, allToolsResult] = await Promise.all([
-      // 获取分类
+      // 获取分类（包括完整信息）
       supabase
         .from('categories')
         .select('id, slug, name, icon, sort_order, tools_count')
@@ -484,6 +484,12 @@ const getHomePageDataInternal = async (supabase: any) => {
       tools_count: cat.tools_count || 0
     })) || []
 
+    // 创建分类ID到slug的映射
+    const categoryIdToSlug: { [key: string]: string } = {}
+    categoriesResult.data?.forEach((cat: any) => {
+      categoryIdToSlug[cat.id] = cat.slug
+    })
+
     // 处理热门工具
     const hotTools = hotToolsResult.data?.map((tool: any) => ({
       id: tool.id,
@@ -491,7 +497,7 @@ const getHomePageDataInternal = async (supabase: any) => {
       slug: tool.slug,
       description: tool.description,
       logo: tool.logo_url || '/placeholder.svg',
-      category: tool.category_id,
+      category: categoryIdToSlug[tool.category_id] || tool.category_id,
       isHot: tool.is_hot,
       isNew: tool.is_new,
       rating: tool.rating,
@@ -506,7 +512,7 @@ const getHomePageDataInternal = async (supabase: any) => {
       slug: tool.slug,
       description: tool.description,
       logo: tool.logo_url || '/placeholder.svg',
-      category: tool.category_id,
+      category: categoryIdToSlug[tool.category_id] || tool.category_id,
       isHot: tool.is_hot,
       isNew: tool.is_new,
       rating: tool.rating,
@@ -521,7 +527,8 @@ const getHomePageDataInternal = async (supabase: any) => {
     })
 
     allToolsResult.data?.forEach((tool: any) => {
-      const categorySlug = categories.find((cat: CategoryForUI) => cat.slug === tool.category_id)?.slug
+      // 使用映射将category_id转换为category_slug
+      const categorySlug = categoryIdToSlug[tool.category_id]
       if (categorySlug && toolsByCategory[categorySlug]) {
         toolsByCategory[categorySlug].push({
           id: tool.id,
@@ -529,7 +536,7 @@ const getHomePageDataInternal = async (supabase: any) => {
           slug: tool.slug,
           description: tool.description,
           logo: tool.logo_url || '/placeholder.svg',
-          category: tool.category_id,
+          category: categorySlug,
           isHot: tool.is_hot,
           isNew: tool.is_new,
           rating: tool.rating,

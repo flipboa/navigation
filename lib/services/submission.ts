@@ -11,7 +11,6 @@ export interface SubmissionData {
   category_id: string
   tool_content?: string
   tool_logo_url?: string
-
   tool_tags?: string[]
   tool_type?: 'free' | 'freemium' | 'paid'
   pricing_info?: Record<string, any>
@@ -114,7 +113,6 @@ export class SubmissionService {
           tool_content: data.tool_content,
           tool_website_url: data.tool_website_url,
           tool_logo_url: data.tool_logo_url,
-
           category_id: data.category_id,
           tool_tags: data.tool_tags || [],
           tool_type: data.tool_type || 'free',
@@ -133,6 +131,49 @@ export class SubmissionService {
 
       if (submissionError || !submission) {
         throw new Error('提交失败：' + submissionError?.message)
+      }
+
+      // 如果是管理员或审核员提交，自动通过审核并同步到 tools 表
+      if (initialStatus === 'approved') {
+        let slug = data.tool_name.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]+/g, '');
+
+        // 检查 slug 是否唯一，如果不唯一则添加随机后缀
+        const { data: existingTool, error: slugError } = await this.supabase
+          .from('tools')
+          .select('slug')
+          .eq('slug', slug)
+          .single();
+
+        if (slugError && slugError.code !== 'PGRST116') { // PGRST116: 'exact-one'
+          console.error('检查 slug 唯一性时出错:', slugError);
+          // 即使检查失败，也继续尝试插入，让数据库处理冲突
+        }
+
+        if (existingTool) {
+          slug = `${slug}-${Math.random().toString(36).substring(2, 7)}`;
+        }
+
+        const { data: tool, error: toolError } = await this.supabase
+          .from('tools')
+          .insert({
+            name: data.tool_name,
+            description: data.tool_description,
+            content: data.tool_content,
+            website_url: data.tool_website_url,
+            logo_url: data.tool_logo_url,
+            category_id: data.category_id,
+            tags: data.tool_tags,
+            tool_type: data.tool_type,
+            pricing_info: data.pricing_info,
+            slug: slug,
+            screenshots: null,
+            submitted_by: user.id, // 添加 submitted_by 字段以符合 RLS 策略
+          });
+
+        if (toolError) {
+          console.error('同步到 tools 表失败:', toolError);
+          throw new Error(`同步到 tools 表失败: ${toolError.message}`);
+        }
       }
 
       // 记录审核历史
@@ -248,6 +289,43 @@ export class SubmissionService {
 
       if (updateError) {
         throw new Error('更新提交状态失败：' + updateError.message)
+      }
+
+      // 如果审核通过，则将数据同步到 tools 表
+      if (newStatus === 'approved') {
+        const { data: submissionData, error: submissionDataError } = await this.supabase
+          .from('submissions')
+          .select('*')
+          .eq('id', submissionId)
+          .single();
+
+        if (submissionDataError || !submissionData) {
+          throw new Error('获取提交数据失败');
+        }
+
+        const slug = submissionData.tool_name.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]+/g, '');
+
+        const { data: tool, error: toolError } = await this.supabase
+          .from('tools')
+          .insert({
+            name: submissionData.tool_name,
+            description: submissionData.tool_description,
+            content: submissionData.tool_content,
+            website_url: submissionData.tool_website_url,
+            logo_url: submissionData.tool_logo_url,
+            category_id: submissionData.category_id,
+            tags: submissionData.tool_tags,
+            tool_type: submissionData.tool_type,
+            pricing_info: submissionData.pricing_info,
+            slug: slug,
+            screenshots: null, // 暂无截图信息
+            submitted_by: submissionData.submitted_by, // 添加 submitted_by 字段以符合 RLS 策略
+          });
+
+        if (toolError) {
+          console.error('同步到 tools 表失败:', toolError);
+          // 即使同步失败，也暂时不抛出错误，以确保审核流程的完整性
+        }
       }
 
       // 记录审核历史

@@ -115,9 +115,7 @@ export function FileUploader({
         </div>
       ) : (
         <div
-          className={`border-2 border-dashed rounded-md p-6 text-center ${
-            isDragging ? "border-primary bg-primary/10" : "border-muted-foreground/20"
-          }`}
+          className={`border-2 border-dashed rounded-md p-6 text-center ${isDragging ? "border-primary bg-primary/10" : "border-muted-foreground/20"}`}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
