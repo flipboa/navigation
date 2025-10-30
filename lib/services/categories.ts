@@ -47,7 +47,7 @@ export async function getActiveCategories(): Promise<CategoryForUI[]> {
   }
 
   return data.map(category => ({
-    id: category.slug, // 使用slug作为id以保持与现有代码的兼容性
+    id: category.id, // 使用数据库中的真实id
     slug: category.slug,
     name: category.name,
     icon: category.icon || '📁',

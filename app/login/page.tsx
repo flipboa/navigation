@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -18,22 +18,40 @@ export default function LoginPage() {
   const router = useRouter()
   const supabase = createClient()
 
+  // 在组件加载时检查环境变量
+  React.useEffect(() => {
+    console.log('环境变量检查:')
+    console.log('NEXT_PUBLIC_SUPABASE_URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
+    console.log('NEXT_PUBLIC_SUPABASE_ANON_KEY exists:', !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
+    
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      setError('应用配置错误：缺少必要的环境变量')
+    }
+  }, [])
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
 
     try {
+      console.log('开始登录流程...')
+      console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
+      console.log('输入的邮箱/昵称:', emailOrNickname)
+      
       let loginEmail = emailOrNickname
 
       // 检查输入的是否为昵称（不包含@符号）
       if (!emailOrNickname.includes('@')) {
+        console.log('检测到昵称，查找对应邮箱...')
         // 通过昵称查找对应的邮箱
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('email')
           .eq('nickname', emailOrNickname.toLowerCase())
           .single()
+
+        console.log('昵称查找结果:', { profile, profileError })
 
         if (profileError || !profile) {
           setError('昵称不存在，请检查输入或使用邮箱登录')
@@ -42,20 +60,27 @@ export default function LoginPage() {
         }
 
         loginEmail = profile.email
+        console.log('找到对应邮箱:', loginEmail)
       }
 
-      const { error } = await supabase.auth.signInWithPassword({
+      console.log('尝试使用邮箱登录:', loginEmail)
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: loginEmail,
         password,
       })
 
+      console.log('登录结果:', { data, error })
+
       if (error) {
+        console.error('登录错误详情:', error)
         setError('登录失败：' + error.message)
       } else {
+        console.log('登录成功，跳转到首页')
         router.push('/')
       }
     } catch (err) {
-      setError('登录时发生错误，请稍后重试')
+      console.error('登录异常:', err)
+      setError('登录时发生错误：' + (err instanceof Error ? err.message : '未知错误'))
     } finally {
       setLoading(false)
     }
@@ -79,11 +104,11 @@ export default function LoginPage() {
             )}
             
             <div className="space-y-2">
-              <Label htmlFor="emailOrNickname">邮箱\昵称</Label>
+              <Label htmlFor="emailOrNickname">邮箱/昵称</Label>
               <Input
                 id="emailOrNickname"
                 type="text"
-                placeholder="输入您的邮箱\昵称"
+                placeholder="输入您的邮箱/昵称"
                 value={emailOrNickname}
                 onChange={(e) => setEmailOrNickname(e.target.value)}
                 required

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
@@ -11,8 +11,9 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
-import { categories } from "@/lib/data"
+import { getActiveCategories, CategoryForUI } from "@/lib/services/categories"
 import { FileUploader } from "@/components/file-uploader"
+import { submissionService } from "@/lib/services/submission"
 
 const formSchema = z.object({
   name: z.string().min(2, {
@@ -29,8 +30,8 @@ const formSchema = z.object({
   url: z.string().url({
     message: "请输入有效的URL",
   }),
-  category: z.string({
-    required_error: "请选择一个分类",
+  category: z.string().min(1, {
+    message: "请选择一个分类",
   }),
   description: z
     .string()
@@ -57,6 +58,29 @@ export default function SubmitPage() {
   const editId = searchParams.get("edit")
   const { toast } = useToast()
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [categories, setCategories] = useState<CategoryForUI[]>([])
+  const [isLoadingCategories, setIsLoadingCategories] = useState(true)
+
+  // 获取分类数据
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const categoriesData = await getActiveCategories()
+        setCategories(categoriesData)
+      } catch (error) {
+        console.error('Failed to fetch categories:', error)
+        toast({
+          title: "获取分类失败",
+          description: "无法加载分类数据，请刷新页面重试",
+          variant: "destructive",
+        })
+      } finally {
+        setIsLoadingCategories(false)
+      }
+    }
+
+    fetchCategories()
+  }, [toast])
 
   // 如果是编辑模式，这里可以根据editId获取已有数据
   const defaultValues = editId
@@ -87,18 +111,57 @@ export default function SubmitPage() {
     defaultValues,
   })
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
+  async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true)
 
-    // 模拟提交过程
-    setTimeout(() => {
-      setIsSubmitting(false)
+    try {
+      // 找到对应的分类
+      const selectedCategory = categories.find(cat => cat.slug === values.category)
+      if (!selectedCategory) {
+        throw new Error('无效的分类选择')
+      }
+
+      // 使用智能提交服务
+      const result = await submissionService.submitTool({
+        tool_name: values.name,
+        tool_description: values.description,
+        tool_content: values.content,
+        tool_website_url: values.url,
+        category_id: selectedCategory.id, // 使用数据库中的UUID id
+        tool_logo_url: values.logo,
+        tool_screenshots: values.coverImage ? [values.coverImage] : [],
+        tool_tags: [], // 可以后续添加标签功能
+        tool_type: 'free', // 默认免费，可以后续添加定价选择
+        pricing_info: {},
+        submitter_name: '', // 从用户资料获取
+        submitter_email: '', // 从用户资料获取
+        submission_notes: editId ? '更新现有工具' : '新工具提交',
+      })
+
       toast({
         title: editId ? "更新成功" : "提交成功",
-        description: editId ? "您的工具信息已更新，等待审核" : "您的工具已提交，等待审核",
+        description: result.message,
+        variant: result.auto_approved ? "default" : "default",
       })
-      router.push("/user/submissions")
-    }, 1500)
+
+      // 根据结果决定跳转页面
+      if (result.auto_approved) {
+        // 自动通过的跳转到首页查看
+        router.push("/")
+      } else {
+        // 需要审核的跳转到提交历史页面
+        router.push("/user/submissions")
+      }
+    } catch (error) {
+      console.error('提交失败:', error)
+      toast({
+        title: "提交失败",
+        description: error instanceof Error ? error.message : "未知错误，请重试",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -163,12 +226,16 @@ export default function SubmitPage() {
                         <SelectValue placeholder="选择分类" />
                       </SelectTrigger>
                     </FormControl>
-                    <SelectContent>
-                      {categories.map((category) => (
-                        <SelectItem key={category.id} value={category.id}>
-                          {category.name}
-                        </SelectItem>
-                      ))}
+                        <SelectContent>
+                      {isLoadingCategories ? (
+                        <div className="p-2 text-center text-sm text-muted-foreground">加载中...</div>
+                      ) : (
+                        categories.map((category) => (
+                          <SelectItem key={category.id} value={category.id}>
+                            {category.icon} {category.name}
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                   <FormDescription>选择最适合该工具的分类</FormDescription>
