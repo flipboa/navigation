@@ -45,23 +45,21 @@ export default function HomeClient({
       return
     }
 
-    // 计算滚动位置：让h2顶部距离header底部10px
-    const headerHeight = 64
+    // 计算滚动位置：让h2顶部距离容器顶部10px
     const desiredGap = 10
-    const targetTopPosition = headerHeight + desiredGap
 
-    // 获取h2相对于页面的位置
+    // 获取h2相对于容器的位置
+    const containerRect = container.getBoundingClientRect()
     const h2Rect = titleH2.getBoundingClientRect()
-    const currentScrollTop = window.pageYOffset || document.documentElement.scrollTop
-
-    // 计算h2当前距离页面顶部的绝对位置
-    const h2AbsoluteTop = h2Rect.top + currentScrollTop
+    
+    // 计算h2相对于容器内容的位置
+    const h2RelativeTop = h2Rect.top - containerRect.top + container.scrollTop
 
     // 计算需要滚动到的位置
-    const targetScrollTop = h2AbsoluteTop - targetTopPosition
+    const targetScrollTop = h2RelativeTop - desiredGap
 
     // 平滑滚动到目标位置
-    window.scrollTo({
+    container.scrollTo({
       top: targetScrollTop,
       behavior: "smooth"
     })
@@ -80,7 +78,7 @@ export default function HomeClient({
   }
 
   return (
-    <div className="flex min-h-screen">
+    <div className="grid grid-cols-1 md:grid-cols-[256px_1fr] h-[calc(100vh-4rem)] overflow-hidden">
       {/* 左侧分类栏 */}
       <CategorySidebar
         categories={categories}
@@ -89,8 +87,8 @@ export default function HomeClient({
         onSubmitClick={handleSubmitClick}
       />
 
-      {/* 主内容区 - 为固定的侧边栏留出空间 */}
-      <div className="flex-1 p-6 md:ml-64" ref={contentRef}>
+      {/* 主内容区 - 独立的滚动容器 */}
+      <div className="overflow-y-auto overflow-x-hidden p-6" ref={contentRef}>
         {/* 移动端搜索框 */}
         <div className="relative mb-6 md:hidden">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
